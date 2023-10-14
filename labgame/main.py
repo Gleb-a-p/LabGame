@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*-coding: utf-8 -*-
 # vim: sw=4 ts=4 expandtab ai
+
 import telebot
 import logging
 from logging import config as logging_config
@@ -36,12 +37,66 @@ DEFAULT_CONFIG = {
     }
 }
 
+MAP = [
+      [0, 0, 0, 0, 0],
+      [0, 1, 2, 2, 0],
+      [0, 2, 0, 2, 0],
+      [0, 2, 2, 3, 0],
+      [0, 0, 0, 0, 0]
+      ]
+
+ROOMS = {
+        0: "глухая стена",
+        1: "пустая комната",
+        2: "пустая комната",
+        3: "комната-выход"
+        }
+
+PLAYER_START_X = 1
+PLAYER_START_Y = 1
+PLAYER_START_DIR = 0
+
 NEXT_TURN_TEXT = '''
 Вы можете:
-    0. Показать инвентарь.
-    1. Повернутся влево.
-    2. Повернутся направо.
+0. Показать инвентарь.
+1. Повернутся влево.
+2. Повернутся направо.
 '''
+
+START_MESSAGE = '''
+Привет.
+Я текстовая игра-лабиринт в телеграм боте.
+'''
+
+HELP_MESSAGE = '''
+КОМАНДЫ:
+ - /start - вывести стартовое сообщение
+ - /help - вывести это сообщение
+ - /run - начать игру
+ - /reset - завершить игру
+'''
+
+RUN_MESSAGE = "*сюжет*"
+
+GOOD_RUN_MESSAGE = "Игра начата."
+
+BAD_RUN_MESSAGE = "Игра уже начата. Перед тем, как начать новую игру, завершите эту командой reset."
+
+GOOD_RESET_MESSAGE = "Игра удалена"
+
+BAD_RESET_MESSAGE = "Игра не найдена. Удалять нечего."
+
+END_GAME_MESSAGE = "Игра завершена."
+
+EMPTY_INVENTORY_MESSAGE = "Ваш инвентарь пуст."
+
+TURN_NUMBER_MESSAGE =  "*** ХОД {0} *** "
+
+NEXT_ROOM_MESSAGE = "Перед вами "
+
+UNKNOWN_COMMAND_MESSAGE = "Мы таких команд не знаем, введите одну из предложенного списка."
+
+MOVE_OPTION = "3. Идти вперед."
 
 
 # Типы комнат
@@ -61,47 +116,50 @@ NEXT_TURN_TEXT = '''
 # 2 - Юг(вниз)
 # 3 - Запад(влево)
 
-class Map: # Класс Карта
-    def __init__(self): # Функция init
-        self.map = [
-                    [0, 0, 0, 0, 0],
-                    [0, 1, 2, 2, 0],
-                    [0, 2, 0, 2, 0],
-                    [0, 2, 2, 3, 0],
-                    [0, 0, 0, 0, 0]
-                   ]
+# Класс Карта
+class Map:
+    # Функция init
+    def __init__(self):
+        self.map = MAP
 
-    def get_room_type(self, x, y): # Получение типа комнаты по координатам
+    # Получение типа комнаты по координатам
+    def get_room_type(self, x, y):
         return self.map[y][x]
 
-    def get_type_next_room(self, x, y, direction): # Получение типа следующей комнаты  по направлению
-        if direction == 1:
+    # Получение типа следующей комнаты  по направлению
+    def get_type_next_room(self, x, y, direction):
+        if direction == 0:
             return self.map[y - 1][x]
-        elif direction == 2:
+        elif direction == 1:
             return self.map[y][x + 1]
-        elif direction == 3:
+        elif direction == 2:
             return self.map[y + 1][x]
-        elif direction == 4:
+        elif direction == 3:
             return self.map[y][x - 1]
 
 
-class Player: # Класс Игрок
-    def __init__(self, x, y, direction): # Функция init
+# Класс Игрок
+class Player:
+    # Функция init
+    def __init__(self, x, y, direction):
         self.hp = 100
         self.x = x
         self.y = y
         self.direction = direction
         self.inventory = []
 
-    def povorot_right(self): # Поворот по часовой стрелке
+    # Поворот по часовой стрелке
+    def turn_right(self):
         self.direction = (self.direction + 1) % 4
 
-    def povorot_left(self): # Поворот против часовой стрелки
+    # Поворот против часовой стрелки
+    def turn_left(self):
         self.direction = self.direction - 1
         if self.direction < 0:
             self.direction = 3
 
-    def step_forward(self): # Шаг вперед
+    # Шаг вперед
+    def step_forward(self):
         if self.direction == 0:
             self.y -= 1
         elif self.direction == 1:
@@ -111,60 +169,86 @@ class Player: # Класс Игрок
         elif self.direction == 3:
             self.x -= 1
 
-    def get_koord(self): # Получение координат
-        return self.x, self.y
 
-    def get_direction(self): # Получение направления
-        return self.direction
-
-
-class Game: # Класс Игра
-    def __init__(self, game_cid): # Функция init
+# Класс Игра
+class Game: 
+    # Функция init
+    def __init__(self, game_cid, turn_number):
         self.game_cid = game_cid
         self.running = True
         self.map = Map()
-        self.player = Player(1, 1, 0)
-        self.turn_number = 1
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y, PLAYER_START_DIR)
+        self.turn_number = turn_number
 
-    def get_num_turn(self): # Получение номера хода
+    # Получение номера хода
+    def get_num_turn(self):
         return self.turn_number
 
-    def next_turn(self): # Выполнение следующего хода
-        bot.send_message(self.game_cid, f" *** {self.turn_number} *** ")
+    # Вывод текущего состояния
+    def send_current_state(self, bot):
+        bot.send_message(self.game_cid, TURN_NUMBER_MESSAGE.format(self.turn_number))
+        bot.send_message(self.game_cid, NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)])
         bot.send_message(self.game_cid, NEXT_TURN_TEXT)
-        if self.map.get_type_next_room(self.player(x), self.player(y), self.player(direction)) != 0:
-            bot.send_message(self.game_cid, "    3. Идти вперед")
-        turn = int(input("Ваши действия: ")) # ЗАМЕНИТЬ НА ВВОД ДАННЫХ ОТ ТЕЛЕГРАММА
-        if turn == 0:
-            bot.send_message(self.game_cid, self.player(inventory))
-        elif turn == 1:
+        if self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
+            bot.send_message(self.game_cid, MOVE_OPTION)
+        self.turn_number += 1
+
+    # Выполнение следующего хода
+    def next_turn(self, bot, turn):
+        running = True
+        if turn == "0":
+            if self.player.inventory == []:
+                bot.send_message(self.game_cid, EMPTY_INVENTORY_MESSAGE)
+            else:
+                for item in range(len(self.player.inventory)):
+                    bot.send_message(self.game_cid, f"{item + 1}. {self.player.inventory[item]}")
+        elif turn == "1":
             self.player.turn_left()
-        elif turn == 2:
+        elif turn == "2":
             self.player.turn_right()
-        elif turn == 3 and self.map.get_type_next_room(self.player(x), self.player(y), self.player(direction)) == 2:
+        elif turn == "3" and self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
             self.player.step_forward()
-        if self.player(hp) <= 0:
+        else:
+            bot.send_message(self.game_cid, UNKNOWN_COMMAND_MESSAGE)
+        if self.player.hp <= 0 or self.map.get_room_type(self.player.x, self.player.y) == 3:
             running = False
         return running
 
-    def is_game_continued(self): # Определение, продолжается игра или нет
+    # Определение, продолжается игра или нет
+    def is_game_continued(self):
         return self.running
 
 
-class GameStorage: # Класс Игровое Хранилище
-    def __init__(self, log): # Функция init
-        self.players = {}
+# Класс Игровое Хранилище
+class GameStorage: 
+    # Функция init
+    def __init__(self, log):
         self.games = {}
         self.log = log
 
-    def check_running_game(self, cid): # Проверка, запущена ли игра
+    # Проверка, запущена ли игра
+    def check_running_game(self, cid):
         return cid in self.games
 
-    def start_new_game(self, game_cid, bot): # Запуск новой игры
-        self.games[game_cid] = Game(game_cid)
-        bot.send_message(game_cid, "Пока в разработке.")
+    # Запуск новой игры
+    def start_new_game(self, game_cid, bot):
+        self.log.debug(f'Start new game for user {game_cid}')
+        self.games[game_cid] = Game(game_cid, 1)
+        self.games[game_cid].send_current_state(bot)
 
-    def delete_game(self, game_cid): # Удаление игры
+    # Игровой цикл
+    def in_game_input(self, bot, message, game_cid):
+        game = self.games[game_cid]
+        self.log.debug(f'Get input game cmd {message.text} from {game_cid}')
+        run = game.next_turn(bot, message.text)
+        if not run:
+            bot.send_message(game_cid, END_GAME_MESSAGE)
+            self.delete_game(game_cid)
+            return
+        game.send_current_state(bot)
+
+    # Удаление игры
+    def delete_game(self, game_cid):
         del self.games[game_cid]
 
 
@@ -196,10 +280,11 @@ def run_game(message, log, bot, game_storage):
     log.debug('Get command run for chat %s', cid)
 
     if game_storage.check_running_game(cid):
-        bot.send_message(cid, "Игра уже начата. Перед тем, как начать новую игру, завершите эту командой reset.")
+        bot.send_message(cid, BAD_RUN_MESSAGE)
     else:
         try:
-            bot.send_message(cid, "Игра начата.")
+            bot.send_message(cid, GOOD_RUN_MESSAGE)
+            bot.send_message(cid, RUN_MESSAGE)
             game_storage.start_new_game(cid, bot)
         except Exception as err:
             log.exception(
@@ -214,7 +299,7 @@ def reset_game(message, log, bot, game_storage):
 
     if game_storage.check_running_game(cid):
         try:
-            bot.send_message(cid, "Игра удалена.")
+            bot.send_message(cid, GOOD_RESET_MESSAGE)
             game_storage.delete_game(cid)
         except Exception as err:
             log.exception(
@@ -222,7 +307,7 @@ def reset_game(message, log, bot, game_storage):
                 cid, str(err)
             )
     else:
-        bot.send_message(cid, "Игра не найдена. Удалять нечего.")
+        bot.send_message(cid, BAD_RESET_MESSAGE)
 
 
 def main():
@@ -239,12 +324,12 @@ def main():
 
     @bot.message_handler(commands=['start'])
     def start_message(message):
-        bot.send_message(message.chat.id, "Привет")
+        bot.send_message(message.chat.id, START_MESSAGE)
         log.debug('Get cmd start from %s ', message.chat.id)
 
     @bot.message_handler(commands=['help'])
     def help_message(message):
-        bot.send_message(message.chat.id, "Справка")
+        bot.send_message(message.chat.id, HELP_MESSAGE)
         log.debug('Get cmd help from %s ', message.chat.id)
 
     @bot.message_handler(commands=['run'])
@@ -254,6 +339,12 @@ def main():
     @bot.message_handler(commands=['reset'])
     def reset_message(message):
         reset_game(message, log, bot, game_storage)
+
+    @bot.message_handler(
+        func=lambda msg:
+            game_storage.check_running_game(msg.chat.id))
+    def get_user_message(message):
+        game_storage.in_game_input(bot, message, message.chat.id)
 
     log.info('Start Telegram API polling')
     # Restart on error and not reset storage
