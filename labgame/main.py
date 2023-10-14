@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 # -*-coding: utf-8 -*-
 # vim: sw=4 ts=4 expandtab ai
+
 import telebot
 import logging
 from logging import config as logging_config
 from optparse import OptionParser
-from optparse import OptionParser
 import os.path
 import sys
 import telebot
+
 
 DEFAULT_CONFIG = {
     'version': 1.0,
@@ -36,6 +37,220 @@ DEFAULT_CONFIG = {
     }
 }
 
+MAP = [
+      [0, 0, 0, 0, 0],
+      [0, 1, 2, 2, 0],
+      [0, 2, 0, 2, 0],
+      [0, 2, 2, 3, 0],
+      [0, 0, 0, 0, 0]
+      ]
+
+ROOMS = {
+        0: "глухая стена",
+        1: "пустая комната",
+        2: "пустая комната",
+        3: "комната-выход"
+        }
+
+PLAYER_START_X = 1
+PLAYER_START_Y = 1
+PLAYER_START_DIR = 0
+
+NEXT_TURN_TEXT = '''
+Вы можете:
+0. Показать инвентарь.
+1. Повернутся влево.
+2. Повернутся направо.
+'''
+
+START_MESSAGE = '''
+Привет.
+Я текстовая игра-лабиринт в телеграм боте.
+'''
+
+HELP_MESSAGE = '''
+КОМАНДЫ:
+ - /start - вывести стартовое сообщение
+ - /help - вывести это сообщение
+ - /run - начать игру
+ - /reset - завершить игру
+'''
+
+RUN_MESSAGE = "*сюжет*"
+
+GOOD_RUN_MESSAGE = "Игра начата."
+
+BAD_RUN_MESSAGE = "Игра уже начата. Перед тем, как начать новую игру, завершите эту командой reset."
+
+GOOD_RESET_MESSAGE = "Игра удалена"
+
+BAD_RESET_MESSAGE = "Игра не найдена. Удалять нечего."
+
+END_GAME_MESSAGE = "Игра завершена."
+
+EMPTY_INVENTORY_MESSAGE = "Ваш инвентарь пуст."
+
+TURN_NUMBER_MESSAGE =  "*** ХОД {0} *** "
+
+NEXT_ROOM_MESSAGE = "Перед вами "
+
+UNKNOWN_COMMAND_MESSAGE = "Мы таких команд не знаем, введите одну из предложенного списка."
+
+MOVE_OPTION = "3. Идти вперед."
+
+
+# Типы комнат
+# 0 - глухая стена
+# 1 - стартовая комната
+# 2 - пустая комната
+# 3 - выход
+
+# Коды возврата из функций комнат
+# 0 - Игрок погиб в комнате
+# 1 - Игрок прошел в комнату
+# 2 - Игрок завершил игру
+
+# Направления игрока
+# 0 - Север(вверх)
+# 1 - Восток(вправо)
+# 2 - Юг(вниз)
+# 3 - Запад(влево)
+
+# Класс Карта
+class Map:
+    # Функция init
+    def __init__(self):
+        self.map = MAP
+
+    # Получение типа комнаты по координатам
+    def get_room_type(self, x, y):
+        return self.map[y][x]
+
+    # Получение типа следующей комнаты  по направлению
+    def get_type_next_room(self, x, y, direction):
+        if direction == 0:
+            return self.map[y - 1][x]
+        elif direction == 1:
+            return self.map[y][x + 1]
+        elif direction == 2:
+            return self.map[y + 1][x]
+        elif direction == 3:
+            return self.map[y][x - 1]
+
+
+# Класс Игрок
+class Player:
+    # Функция init
+    def __init__(self, x, y, direction):
+        self.hp = 100
+        self.x = x
+        self.y = y
+        self.direction = direction
+        self.inventory = []
+
+    # Поворот по часовой стрелке
+    def turn_right(self):
+        self.direction = (self.direction + 1) % 4
+
+    # Поворот против часовой стрелки
+    def turn_left(self):
+        self.direction = self.direction - 1
+        if self.direction < 0:
+            self.direction = 3
+
+    # Шаг вперед
+    def step_forward(self):
+        if self.direction == 0:
+            self.y -= 1
+        elif self.direction == 1:
+            self.x += 1
+        elif self.direction == 2:
+            self.y += 1
+        elif self.direction == 3:
+            self.x -= 1
+
+
+# Класс Игра
+class Game: 
+    # Функция init
+    def __init__(self, game_cid, turn_number):
+        self.game_cid = game_cid
+        self.running = True
+        self.map = Map()
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y, PLAYER_START_DIR)
+        self.turn_number = turn_number
+
+    # Получение номера хода
+    def get_num_turn(self):
+        return self.turn_number
+
+    # Вывод текущего состояния
+    def send_current_state(self, bot):
+        bot.send_message(self.game_cid, TURN_NUMBER_MESSAGE.format(self.turn_number))
+        bot.send_message(self.game_cid, NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)])
+        bot.send_message(self.game_cid, NEXT_TURN_TEXT)
+        if self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
+            bot.send_message(self.game_cid, MOVE_OPTION)
+        self.turn_number += 1
+
+    # Выполнение следующего хода
+    def next_turn(self, bot, turn):
+        running = True
+        if turn == "0":
+            if self.player.inventory == []:
+                bot.send_message(self.game_cid, EMPTY_INVENTORY_MESSAGE)
+            else:
+                for item in range(len(self.player.inventory)):
+                    bot.send_message(self.game_cid, f"{item + 1}. {self.player.inventory[item]}")
+        elif turn == "1":
+            self.player.turn_left()
+        elif turn == "2":
+            self.player.turn_right()
+        elif turn == "3" and self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
+            self.player.step_forward()
+        else:
+            bot.send_message(self.game_cid, UNKNOWN_COMMAND_MESSAGE)
+        if self.player.hp <= 0 or self.map.get_room_type(self.player.x, self.player.y) == 3:
+            running = False
+        return running
+
+    # Определение, продолжается игра или нет
+    def is_game_continued(self):
+        return self.running
+
+
+# Класс Игровое Хранилище
+class GameStorage: 
+    # Функция init
+    def __init__(self, log):
+        self.games = {}
+        self.log = log
+
+    # Проверка, запущена ли игра
+    def check_running_game(self, cid):
+        return cid in self.games
+
+    # Запуск новой игры
+    def start_new_game(self, game_cid, bot):
+        self.log.debug(f'Start new game for user {game_cid}')
+        self.games[game_cid] = Game(game_cid, 1)
+        self.games[game_cid].send_current_state(bot)
+
+    # Игровой цикл
+    def in_game_input(self, bot, message, game_cid):
+        game = self.games[game_cid]
+        self.log.debug(f'Get input game cmd {message.text} from {game_cid}')
+        run = game.next_turn(bot, message.text)
+        if not run:
+            bot.send_message(game_cid, END_GAME_MESSAGE)
+            self.delete_game(game_cid)
+            return
+        game.send_current_state(bot)
+
+    # Удаление игры
+    def delete_game(self, game_cid):
+        del self.games[game_cid]
+
 
 def log_init():
     logging_config.dictConfig(DEFAULT_CONFIG)
@@ -60,10 +275,46 @@ def get_token():
     return options, token
 
 
+def run_game(message, log, bot, game_storage):
+    cid = message.chat.id
+    log.debug('Get command run for chat %s', cid)
+
+    if game_storage.check_running_game(cid):
+        bot.send_message(cid, BAD_RUN_MESSAGE)
+    else:
+        try:
+            bot.send_message(cid, GOOD_RUN_MESSAGE)
+            bot.send_message(cid, RUN_MESSAGE)
+            game_storage.start_new_game(cid, bot)
+        except Exception as err:
+            log.exception(
+                "Error in game start for user %s: %s",
+                cid, str(err)
+            )
+
+
+def reset_game(message, log, bot, game_storage):
+    cid = message.chat.id
+    log.debug('Get command reset for chat %s', cid)
+
+    if game_storage.check_running_game(cid):
+        try:
+            bot.send_message(cid, GOOD_RESET_MESSAGE)
+            game_storage.delete_game(cid)
+        except Exception as err:
+            log.exception(
+                "Error in game delete for user %s: %s",
+                cid, str(err)
+            )
+    else:
+        bot.send_message(cid, BAD_RESET_MESSAGE)
+
+
 def main():
     opts, token = get_token()
     log_init()
     log = logging.getLogger(__name__)
+    game_storage = GameStorage(log=log)
 
     try:
         bot = telebot.TeleBot(token)
@@ -73,13 +324,27 @@ def main():
 
     @bot.message_handler(commands=['start'])
     def start_message(message):
-        bot.send_message(message.chat.id, "Привет")
+        bot.send_message(message.chat.id, START_MESSAGE)
         log.debug('Get cmd start from %s ', message.chat.id)
 
     @bot.message_handler(commands=['help'])
     def help_message(message):
-        bot.send_message(message.chat.id, "Справка")
+        bot.send_message(message.chat.id, HELP_MESSAGE)
         log.debug('Get cmd help from %s ', message.chat.id)
+
+    @bot.message_handler(commands=['run'])
+    def run_message(message):
+        run_game(message, log, bot, game_storage)
+
+    @bot.message_handler(commands=['reset'])
+    def reset_message(message):
+        reset_game(message, log, bot, game_storage)
+
+    @bot.message_handler(
+        func=lambda msg:
+            game_storage.check_running_game(msg.chat.id))
+    def get_user_message(message):
+        game_storage.in_game_input(bot, message, message.chat.id)
 
     log.info('Start Telegram API polling')
     # Restart on error and not reset storage
