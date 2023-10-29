@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*-coding: utf-8 -*-
 # vim: sw=4 ts=4 expandtab ai
 
@@ -66,6 +66,7 @@ NEXT_TURN_TEXT = '''
 START_MESSAGE = '''
 Привет.
 Я текстовая игра-лабиринт в телеграм боте.
+Чтобы посмотреть список комманд, введите команду /help.
 '''
 
 HELP_MESSAGE = '''
