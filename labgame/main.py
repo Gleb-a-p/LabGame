@@ -38,23 +38,41 @@ DEFAULT_CONFIG = {
 }
 
 MAP = [
-      [0, 0, 0, 0, 0],
-      [0, 1, 2, 2, 0],
-      [0, 2, 0, 2, 0],
-      [0, 2, 2, 3, 0],
-      [0, 0, 0, 0, 0]
+      [0, 0, 0, 0, 0, 0],
+      [0, 1, 0, 4, 0, 0],
+      [0, 2, 2, 2, 5, 0],
+      [0, 2, 0, 2, 6, 0],
+      [0, 2, 2, 3, 0, 0],
+      [0, 0, 0, 0, 0, 0]
       ]
 
 ROOMS = {
         0: "глухая стена",
         1: "пустая комната",
         2: "пустая комната",
-        3: "комната-выход"
+        3: "комната-выход",
+        4: "пустая комната с надписью на стене",
+        5: "пустая комната с надписью на стене",
+        6: "пустая комната с надписью на стене"
         }
 
 PLAYER_START_X = 1
 PLAYER_START_Y = 1
+MAP[PLAYER_START_Y][PLAYER_START_X] = 1
 PLAYER_START_DIR = 0
+
+INSCRIPT_ROOMS = {
+                 4: "П#рв#я ч#сть н#дпис#: 9",
+                 5: "Втор#я част# над#ис#: 1",
+                 6: "Тр#тья(фин#льная) ча#ть на#писи: 0"
+                 }
+
+PASSWORD = "910"
+
+
+PLOT_MESSAGE = '''
+*СЮЖЕТ*
+'''
 
 NEXT_TURN_TEXT = '''
 Вы можете:
@@ -86,7 +104,7 @@ GOOD_RESET_MESSAGE = "Игра удалена"
 
 BAD_RESET_MESSAGE = "Игра не найдена. Удалять нечего."
 
-END_GAME_MESSAGE = "Игра завершена."
+END_GAME_MESSAGE = "Вы вышли из лабиринта за {0} ходов. Игра завершена."
 
 EMPTY_INVENTORY_MESSAGE = "Ваш инвентарь пуст."
 
@@ -98,12 +116,21 @@ UNKNOWN_COMMAND_MESSAGE = "Мы таких команд не знаем, вве�
 
 MOVE_OPTION = "3. Идти вперед."
 
+PWD_OPTION = "pwd. Ввести пароль(чтобы ввести пароль, введите pwd/[пароль])."
+
+INSCRIPTION_TEXT = "В комнате, где вы находитесь, на стене вы видите надпись '{0}'."
+
+TRUE_PWD_MESSAGE = "Правильный пароль."
+
+FALSE_PWD_MESSAGE = "Неправильный пароль."
+
 
 # Типы комнат
 # 0 - глухая стена
 # 1 - стартовая комната
 # 2 - пустая комната
 # 3 - выход
+# 4,5,6 - пустая комната с надписью на стене
 
 # Коды возврата из функций комнат
 # 0 - Игрок погиб в комнате
@@ -188,14 +215,19 @@ class Game:
     def send_current_state(self, bot):
         bot.send_message(self.game_cid, TURN_NUMBER_MESSAGE.format(self.turn_number))
         bot.send_message(self.game_cid, NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)])
+        if self.map.get_room_type(self.player.x, self.player.y) in INSCRIPT_ROOMS:
+            bot.send_message( self.game_cid, INSCRIPTION_TEXT.format(INSCRIPT_ROOMS[self.map.get_room_type(self.player.x, self.player.y)]) )
         bot.send_message(self.game_cid, NEXT_TURN_TEXT)
         if self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
             bot.send_message(self.game_cid, MOVE_OPTION)
+        if self.map.get_room_type(self.player.x, self.player.y) == 3:
+            bot.send_message(self.game_cid, PWD_OPTION)
         self.turn_number += 1
 
     # Выполнение следующего хода
     def next_turn(self, bot, turn):
         running = True
+        true_pwd = False
         if turn == "0":
             if self.player.inventory == []:
                 bot.send_message(self.game_cid, EMPTY_INVENTORY_MESSAGE)
@@ -208,9 +240,15 @@ class Game:
             self.player.turn_right()
         elif turn == "3" and self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
             self.player.step_forward()
+        elif turn[0:3] == "pwd" and self.map.get_room_type(self.player.x, self.player.y) == 3:
+            if turn[4:] == PASSWORD:
+                true_pwd = True
+                bot.send_message(self.game_cid, TRUE_PWD_MESSAGE)
+            else:
+                bot.send_message(self.game_cid, FALSE_PWD_MESSAGE)
         else:
             bot.send_message(self.game_cid, UNKNOWN_COMMAND_MESSAGE)
-        if self.player.hp <= 0 or self.map.get_room_type(self.player.x, self.player.y) == 3:
+        if self.player.hp <= 0 or (self.map.get_room_type(self.player.x, self.player.y) == 3 and true_pwd == True):
             running = False
         return running
 
@@ -242,7 +280,7 @@ class GameStorage:
         self.log.debug(f'Get input game cmd {message.text} from {game_cid}')
         run = game.next_turn(bot, message.text)
         if not run:
-            bot.send_message(game_cid, END_GAME_MESSAGE)
+            bot.send_message(game_cid, END_GAME_MESSAGE.format(game.get_num_turn() - 1))
             self.delete_game(game_cid)
             return
         game.send_current_state(bot)
@@ -284,7 +322,7 @@ def run_game(message, log, bot, game_storage):
     else:
         try:
             bot.send_message(cid, GOOD_RUN_MESSAGE)
-            bot.send_message(cid, RUN_MESSAGE)
+            bot.send_message(cid, PLOT_MESSAGE)
             game_storage.start_new_game(cid, bot)
         except Exception as err:
             log.exception(
