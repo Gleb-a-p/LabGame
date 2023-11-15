@@ -37,6 +37,24 @@ DEFAULT_CONFIG = {
     }
 }
 
+# Типы комнат
+# 0 - глухая стена
+# 1 - стартовая комната
+# 2 - пустая комната
+# 3 - выход
+# 4,5,6 - пустая комната с надписью на стене
+
+# Коды возврата из функций комнат
+# 0 - Игрок погиб в комнате
+# 1 - Игрок прошел в комнату
+# 2 - Игрок завершил игру
+
+# Направления игрока
+# 0 - Север(вверх)
+# 1 - Восток(вправо)
+# 2 - Юг(вниз)
+# 3 - Запад(влево)
+
 MAP = [
       [0, 0, 0, 0, 0, 0],
       [0, 1, 0, 4, 0, 0],
@@ -56,19 +74,18 @@ ROOMS = {
         6: "пустая комната с надписью на стене"
         }
 
+INSCRIPT_ROOMS = {
+                 4: "9 #. ..",
+                 5: ".# 1 #.",
+                 6: ".# .. 0"
+                 }
+
 PLAYER_START_X = 1
 PLAYER_START_Y = 1
 MAP[PLAYER_START_Y][PLAYER_START_X] = 1
 PLAYER_START_DIR = 0
-
-INSCRIPT_ROOMS = {
-                 4: "П#рв#я ч#сть н#дпис#: 9",
-                 5: "Втор#я част# над#ис#: 1",
-                 6: "Тр#тья(фин#льная) ча#ть на#писи: 0"
-                 }
-
+PWD_COMMAND = "pwd/"
 PASSWORD = "910"
-
 
 PLOT_MESSAGE = '''
 *СЮЖЕТ*
@@ -76,14 +93,15 @@ PLOT_MESSAGE = '''
 
 NEXT_TURN_TEXT = '''
 Вы можете:
-0. Показать инвентарь.
 1. Повернутся влево.
 2. Повернутся направо.
 '''
+# ~ 0. Показать инвентарь.
 
 START_MESSAGE = '''
 Привет.
 Я текстовая игра-лабиринт в телеграм боте.
+Чтобы посмотреть список комманд, введите команду /help.
 '''
 
 HELP_MESSAGE = '''
@@ -94,13 +112,11 @@ HELP_MESSAGE = '''
  - /reset - завершить игру
 '''
 
-RUN_MESSAGE = "*сюжет*"
-
 GOOD_RUN_MESSAGE = "Игра начата."
 
 BAD_RUN_MESSAGE = "Игра уже начата. Перед тем, как начать новую игру, завершите эту командой reset."
 
-GOOD_RESET_MESSAGE = "Игра удалена"
+GOOD_RESET_MESSAGE = "Игра удалена."
 
 BAD_RESET_MESSAGE = "Игра не найдена. Удалять нечего."
 
@@ -116,7 +132,7 @@ UNKNOWN_COMMAND_MESSAGE = "Мы таких команд не знаем, вве�
 
 MOVE_OPTION = "3. Идти вперед."
 
-PWD_OPTION = "pwd. Ввести пароль(чтобы ввести пароль, введите pwd/[пароль])."
+PWD_OPTION = "pwd. Ввести пароль(чтобы ввести пароль, введите {0}[пароль]). Пароль состоит из 3 различных цифр, которые вы можете найти в глубинах этого подвала."
 
 INSCRIPTION_TEXT = "В комнате, где вы находитесь, на стене вы видите надпись '{0}'."
 
@@ -124,24 +140,6 @@ TRUE_PWD_MESSAGE = "Правильный пароль."
 
 FALSE_PWD_MESSAGE = "Неправильный пароль."
 
-
-# Типы комнат
-# 0 - глухая стена
-# 1 - стартовая комната
-# 2 - пустая комната
-# 3 - выход
-# 4,5,6 - пустая комната с надписью на стене
-
-# Коды возврата из функций комнат
-# 0 - Игрок погиб в комнате
-# 1 - Игрок прошел в комнату
-# 2 - Игрок завершил игру
-
-# Направления игрока
-# 0 - Север(вверх)
-# 1 - Восток(вправо)
-# 2 - Юг(вниз)
-# 3 - Запад(влево)
 
 # Класс Карта
 class Map:
@@ -213,15 +211,21 @@ class Game:
 
     # Вывод текущего состояния
     def send_current_state(self, bot):
-        bot.send_message(self.game_cid, TURN_NUMBER_MESSAGE.format(self.turn_number))
-        bot.send_message(self.game_cid, NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)])
+        next_turn_message = TURN_NUMBER_MESSAGE.format(self.turn_number) + "\n" + NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)] + "\n"
+        # ~ bot.send_message(self.game_cid, TURN_NUMBER_MESSAGE.format(self.turn_number))
+        # ~ bot.send_message(self.game_cid, NEXT_ROOM_MESSAGE + ROOMS[self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction)])
         if self.map.get_room_type(self.player.x, self.player.y) in INSCRIPT_ROOMS:
-            bot.send_message( self.game_cid, INSCRIPTION_TEXT.format(INSCRIPT_ROOMS[self.map.get_room_type(self.player.x, self.player.y)]) )
-        bot.send_message(self.game_cid, NEXT_TURN_TEXT)
+            next_turn_message += INSCRIPTION_TEXT.format(INSCRIPT_ROOMS[self.map.get_room_type(self.player.x, self.player.y)]) +"\n"
+            # ~ bot.send_message( self.game_cid, INSCRIPTION_TEXT.format(INSCRIPT_ROOMS[self.map.get_room_type(self.player.x, self.player.y)]) )
+        next_turn_message += NEXT_TURN_TEXT
+        # ~ bot.send_message(self.game_cid, NEXT_TURN_TEXT)
         if self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
-            bot.send_message(self.game_cid, MOVE_OPTION)
+            next_turn_message += MOVE_OPTION + "\n"
+            # ~ bot.send_message(self.game_cid, MOVE_OPTION)
         if self.map.get_room_type(self.player.x, self.player.y) == 3:
-            bot.send_message(self.game_cid, PWD_OPTION)
+            next_turn_message += PWD_OPTION.format(PWD_COMMAND) + "\n"
+            # ~ bot.send_message(self.game_cid, PWD_OPTION.format(PWD_COMMAND))
+        bot.send_message(self.game_cid, next_turn_message)
         self.turn_number += 1
 
     # Выполнение следующего хода
@@ -240,8 +244,8 @@ class Game:
             self.player.turn_right()
         elif turn == "3" and self.map.get_type_next_room(self.player.x, self.player.y, self.player.direction) != 0:
             self.player.step_forward()
-        elif turn[0:3] == "pwd" and self.map.get_room_type(self.player.x, self.player.y) == 3:
-            if turn[4:] == PASSWORD:
+        elif turn[0:len(PWD_COMMAND)] == PWD_COMMAND and self.map.get_room_type(self.player.x, self.player.y) == 3:
+            if turn[len(PWD_COMMAND):] == PASSWORD:
                 true_pwd = True
                 bot.send_message(self.game_cid, TRUE_PWD_MESSAGE)
             else:
@@ -275,12 +279,13 @@ class GameStorage:
         self.games[game_cid].send_current_state(bot)
 
     # Игровой цикл
-    def in_game_input(self, bot, message, game_cid):
+    def in_game_input(self, bot, message, game_cid, game_log):
         game = self.games[game_cid]
         self.log.debug(f'Get input game cmd {message.text} from {game_cid}')
         run = game.next_turn(bot, message.text)
         if not run:
             bot.send_message(game_cid, END_GAME_MESSAGE.format(game.get_num_turn() - 1))
+            game_log.debug('Game is ended for chat %s', game_cid)
             self.delete_game(game_cid)
             return
         game.send_current_state(bot)
@@ -321,8 +326,7 @@ def run_game(message, log, bot, game_storage):
         bot.send_message(cid, BAD_RUN_MESSAGE)
     else:
         try:
-            bot.send_message(cid, GOOD_RUN_MESSAGE)
-            bot.send_message(cid, PLOT_MESSAGE)
+            bot.send_message(cid, GOOD_RUN_MESSAGE + PLOT_MESSAGE)
             game_storage.start_new_game(cid, bot)
         except Exception as err:
             log.exception(
@@ -382,7 +386,7 @@ def main():
         func=lambda msg:
             game_storage.check_running_game(msg.chat.id))
     def get_user_message(message):
-        game_storage.in_game_input(bot, message, message.chat.id)
+        game_storage.in_game_input(bot, message, message.chat.id, log)
 
     log.info('Start Telegram API polling')
     # Restart on error and not reset storage
